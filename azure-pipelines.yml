@@ -12,35 +12,60 @@ pool:
 variables:
   buildConfiguration: 'Release'
 
+stages:
+- stage: Build
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: restore
+        projects: '**/*.csproj'
 
-steps:
-- task: DotNetCoreCLI@2
-  inputs:
-    command: restore
-    projects: '**/*.csproj'
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: build
+        arguments: --configuration $(buildConfiguration)
+        projects: '**/*.csproj'
+      displayName: 'dotnet build $(buildConfiguration)'
 
-- task: DotNetCoreCLI@2
-  inputs:
-    command: build
-    arguments: --configuration $(buildConfiguration)
-    projects: '**/*.csproj'
-  displayName: 'dotnet build $(buildConfiguration)'
+    - task: DotNetCoreCLI@2
+      inputs:
+        command: 'publish'
+        publishWebProjects: true
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+        zipAfterPublish: true
 
-- task: DotNetCoreCLI@2
-  inputs:
-    command: 'publish'
-    publishWebProjects: true
-    arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/drop'
-    zipAfterPublish: true
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
 
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-    ArtifactName: 'drop'
-    publishLocation: 'Container'
-
-
-
-
-
-
+- stage: Deploy
+  dependsOn: Build
+  jobs:
+  - deployment: 
+    displayName: 'Deploy to prod'
+    environment: Productions
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              artifact: drop
+            
+            - task: AzureWebApp@1
+              inputs:
+                azureSubscription: 'evfdev(0da0ee35-2887-46e2-afac-778812a58a71)'
+                appType: 'webAppLinux'
+                appName: 'myblazorapp'
+                deployToSlotOrASE: true
+                resourceGroupName: 'demo-rg'
+                slotName: 'production'
+                package: '$(System.DefaultWorkingDirectory)/**/*.zip'
+                runtimeStack: 'DOTNETCORE|9.0'
+        on:
+          failure:
+            steps:
+              - script: echo 'rolling back to previous build'
