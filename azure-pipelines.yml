@@ -63,7 +63,7 @@ stages:
                 deployToSlotOrASE: true
                 resourceGroupName: 'demo-rg'
                 slotName: 'production'
-                package: '$(System.DefaultWorkingDirectory)/**/*.zip'
+                package: '$(Pipeline.Workspace)/drop/**/*.zip'
                 runtimeStack: 'DOTNETCORE|9.0'
         on:
           failure:
